@@ -49,7 +49,7 @@ export const swapToken: ToolHandler = {
       const client = createAuthenticatedClient(token);
       
       // Step 1: Fetch token metadata for both tokens
-      logger.debug('Fetching token metadata for:', args.inputMint, args.outputMint);
+      logger.info('Fetching token metadata for:', args.inputMint, args.outputMint);
       
       const metadataResponse = await client.get<TokenMetadata[]>('/tokens/getlist', {
         params: {
@@ -58,6 +58,7 @@ export const swapToken: ToolHandler = {
       });
       
       const tokens = metadataResponse.data;
+      logger.info('Token metadata response:', JSON.stringify(tokens, null, 2));
       
       if (!tokens || tokens.length < 2) {
         throw new Error('Failed to fetch token metadata. Make sure both token mints are valid.');
@@ -100,7 +101,7 @@ export const swapToken: ToolHandler = {
         transactionSpeed: args.transactionSpeed || 'normal',
       };
       
-      logger.debug('Executing swap with payload:', swapPayload);
+      logger.info('Executing swap with payload:', JSON.stringify(swapPayload, null, 2));
       
       const response = await client.post('/pump/swap', swapPayload);
       
@@ -122,14 +123,21 @@ export const swapToken: ToolHandler = {
       const errorData = error.response?.data;
       const errorCode = errorData?.errorCode;
       const errorMsg = errorData?.error || errorData?.details || error.message;
+      const status = error.response?.status;
       
       logger.error('Failed to swap token:', {
+        status,
         code: errorCode,
         message: errorMsg,
         fullError: errorData,
+        requestPayload: {
+          inputMint: args.inputMint,
+          outputMint: args.outputMint,
+          inputAmount: args.inputAmount,
+        },
       });
       
-      // Provide helpful error messages
+      // Provide helpful error messages with full context
       if (errorCode === 'NO_ROUTE_FOUND') {
         throw new Error('No swap route found. The tokens might not have enough liquidity.');
       } else if (errorCode === 'INSUFFICIENT_BALANCE') {
@@ -139,7 +147,9 @@ export const swapToken: ToolHandler = {
       } else if (errorCode === 'AUTH_REQUIRED') {
         throw new Error('Authentication required. Session may have expired.');
       } else {
-        throw new Error(`Swap failed: ${errorMsg}`);
+        // Include full error details in the exception
+        const fullErrorDetails = errorData ? JSON.stringify(errorData, null, 2) : errorMsg;
+        throw new Error(`Swap failed (HTTP ${status}): ${errorMsg}\n\nFull error: ${fullErrorDetails}`);
       }
     }
   },
