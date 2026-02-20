@@ -114,9 +114,20 @@ export const swapToken: ToolHandler = {
         transactionSpeed: args.transactionSpeed || 'normal',
       };
       
+      console.error('\n========== SWAP REQUEST ==========');
+      console.error('URL: https://wallet.moongate.one/pump/swap');
+      console.error('Payload:', JSON.stringify(swapPayload, null, 2));
+      console.error('Token (first 50 chars):', token.substring(0, 50) + '...');
+      console.error('===================================\n');
+      
       logger.info('Executing swap with payload:', JSON.stringify(swapPayload, null, 2));
       
       const response = await client.post('/pump/swap', swapPayload);
+      
+      console.error('\n========== SWAP RESPONSE ==========');
+      console.error('Status:', response.status);
+      console.error('Data:', JSON.stringify(response.data, null, 2));
+      console.error('===================================\n');
       
       logger.debug('Swap response:', response.data);
       
@@ -139,14 +150,26 @@ export const swapToken: ToolHandler = {
       const errorMsg = errorData?.error || errorData?.details || error.message;
       const status = error.response?.status;
       
+      console.error('\n========== SWAP ERROR ==========');
+      console.error('HTTP Status:', status);
+      console.error('Error Code:', errorCode);
+      console.error('Error Message:', errorMsg);
+      console.error('Full Error Data:', JSON.stringify(errorData, null, 2));
+      console.error('Request was:', {
+        inputMint: args.inputMint,
+        outputMint: args.outputMint,
+        inputAmount: args.inputAmount,
+      });
+      console.error('================================\n');
+      
       logger.error('Failed to swap token:', {
         status,
         code: errorCode,
         message: errorMsg,
         fullError: errorData,
         requestPayload: {
-          inputMint,
-          outputMint,
+          inputMint: args.inputMint,
+          outputMint: args.outputMint,
           inputAmount: args.inputAmount,
         },
       });
