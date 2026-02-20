@@ -92,6 +92,7 @@ export class MoonGateMCPServer {
 
   async start(): Promise<void> {
     logger.info('Initializing MoonGate MCP Server...');
+    logger.info(`Debug mode: ${process.env.MOONGATE_MCP_DEBUG === 'true' ? 'ON' : 'OFF'}`);
 
     // Initialize session (authenticate)
     await this.sessionManager.initialize();

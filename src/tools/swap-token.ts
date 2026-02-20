@@ -11,6 +11,16 @@ interface TokenMetadata {
   Tags: string[];
 }
 
+/** Strip accidental surrounding quotes (e.g. from JSON double-encoding) */
+function stripQuotes(s: string): string {
+  if (typeof s !== 'string') return String(s);
+  let out = s.trim();
+  if ((out.startsWith('"') && out.endsWith('"')) || (out.startsWith("'") && out.endsWith("'"))) {
+    out = out.slice(1, -1);
+  }
+  return out;
+}
+
 export const swapToken: ToolHandler = {
   name: 'swap_token',
   description: 'Swap tokens using MoonGate DEX integration (Jupiter). Fetches token metadata automatically.',
@@ -27,12 +37,12 @@ export const swapToken: ToolHandler = {
       },
       inputAmount: {
         type: 'number',
-        description: 'Amount of input token to swap',
+        description: 'Amount of input token to swap (human-readable, e.g. 190.82)',
       },
       slippagePercentage: {
         type: 'number',
-        description: 'Slippage tolerance as percentage (e.g., 1 = 1%, 0.5 = 0.5%)',
-        default: 1,
+        description: 'Slippage tolerance in basis points (e.g., 100 = 1%, 300 = 3%)',
+        default: 100,
       },
       transactionSpeed: {
         type: 'string',
@@ -44,28 +54,31 @@ export const swapToken: ToolHandler = {
     required: ['inputMint', 'outputMint', 'inputAmount'],
   },
   handler: async (args, context) => {
+    const inputMint = stripQuotes(String(args.inputMint ?? ''));
+    const outputMint = stripQuotes(String(args.outputMint ?? ''));
+
     try {
       const token = await context.sessionManager.getToken();
       const client = createAuthenticatedClient(token);
-      
+
       // Step 1: Fetch token metadata for both tokens
-      logger.info('Fetching token metadata for:', args.inputMint, args.outputMint);
-      
+      logger.info('Fetching token metadata for:', inputMint, outputMint);
+
       const metadataResponse = await client.get<TokenMetadata[]>('/tokens/getlist', {
         params: {
-          mint: `${args.inputMint},${args.outputMint}`,
+          mint: `${inputMint},${outputMint}`,
         },
       });
-      
+
       const tokens = metadataResponse.data;
       logger.info('Token metadata response:', JSON.stringify(tokens, null, 2));
-      
+
       if (!tokens || tokens.length < 2) {
         throw new Error('Failed to fetch token metadata. Make sure both token mints are valid.');
       }
-      
-      const inputToken = tokens.find((t) => t.Mint === args.inputMint);
-      const outputToken = tokens.find((t) => t.Mint === args.outputMint);
+
+      const inputToken = tokens.find((t) => t.Mint === inputMint);
+      const outputToken = tokens.find((t) => t.Mint === outputMint);
       
       if (!inputToken || !outputToken) {
         throw new Error(`Token metadata not found. Input: ${!!inputToken}, Output: ${!!outputToken}`);
@@ -86,16 +99,16 @@ export const swapToken: ToolHandler = {
       const swapPayload = {
         inputToken: {
           mint: inputToken.Mint,
-          decimals: inputToken.Decimals, // Keep as string (API expects string, not number)
+          decimals: String(inputToken.Decimals),
           symbol: inputToken.Symbol,
         },
         outputToken: {
           mint: outputToken.Mint,
-          decimals: outputToken.Decimals, // Keep as string (API expects string, not number)
+          decimals: String(outputToken.Decimals),
           symbol: outputToken.Symbol,
         },
         inputAmount: args.inputAmount,
-        slippagePercentage: args.slippagePercentage || 1,
+        slippagePercentage: args.slippagePercentage ?? 100,
         userWallet,
         password: '', // Empty password per MoonGate OAuth design
         transactionSpeed: args.transactionSpeed || 'normal',
@@ -107,14 +120,15 @@ export const swapToken: ToolHandler = {
       
       logger.debug('Swap response:', response.data);
       
-      if (response.data.success && response.data.signature) {
+      if (response.data.success) {
         return {
-          success: true,
+          success: response.data.success,
           signature: response.data.signature,
+          inputToken: response.data.inputToken ?? inputToken.Mint,
+          outputToken: response.data.outputToken ?? outputToken.Mint,
+          inputAmount: response.data.inputAmount ?? args.inputAmount,
           transactionCount: response.data.transactionCount,
-          inputToken: inputToken.Symbol,
-          outputToken: outputToken.Symbol,
-          inputAmount: args.inputAmount,
+          status: response.data.status ?? 'success',
         };
       } else {
         throw new Error(response.data.error || 'Swap failed without error message');
@@ -131,8 +145,8 @@ export const swapToken: ToolHandler = {
         message: errorMsg,
         fullError: errorData,
         requestPayload: {
-          inputMint: args.inputMint,
-          outputMint: args.outputMint,
+          inputMint,
+          outputMint,
           inputAmount: args.inputAmount,
         },
       });

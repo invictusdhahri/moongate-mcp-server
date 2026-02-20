@@ -2,8 +2,7 @@
  * Logger that writes to stderr (MCP uses stdout for protocol messages)
  */
 
-// Debug mode is ON by default (set MOONGATE_MCP_DEBUG=false to disable)
-const DEBUG = process.env.MOONGATE_MCP_DEBUG !== 'false';
+const DEBUG = process.env.MOONGATE_MCP_DEBUG === 'true';
 
 export const logger = {
   debug: (...args: any[]) => {
