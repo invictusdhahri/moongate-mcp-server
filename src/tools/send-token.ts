@@ -44,16 +44,20 @@ export const sendToken: ToolHandler = {
         userWallet = walletResponse.data.publicKey;
       }
       
-      const response = await client.post('/sending/sendtoken', {
+      const payload = {
         tokenMint: args.tokenMint,
         toAddress: args.toAddress,
         amount: args.amount,
         decimals: args.decimals || 9,
         userWallet,
         password: '', // Empty password per spec
-      });
+      };
       
-      logger.debug('Send token response:', response.data);
+      logger.info('Sending token with payload:', JSON.stringify(payload, null, 2));
+      
+      const response = await client.post('/sending/sendtoken', payload);
+      
+      logger.info('Send token response:', response.data);
       
       return {
         success: response.data.success !== false,
@@ -61,8 +65,24 @@ export const sendToken: ToolHandler = {
         error: response.data.error,
       };
     } catch (error: any) {
-      logger.error('Failed to send token:', error.response?.data || error.message);
-      throw new Error(`Failed to send token: ${error.response?.data?.error || error.message}`);
+      const errorData = error.response?.data;
+      const status = error.response?.status;
+      
+      logger.error('Failed to send token:', {
+        status,
+        errorData,
+        requestPayload: {
+          tokenMint: args.tokenMint,
+          toAddress: args.toAddress,
+          amount: args.amount,
+          decimals: args.decimals || 9,
+        },
+      });
+      
+      const errorMsg = errorData?.error || errorData?.details || error.message;
+      const fullErrorDetails = errorData ? JSON.stringify(errorData, null, 2) : errorMsg;
+      
+      throw new Error(`Failed to send token (HTTP ${status}): ${errorMsg}\n\nFull error: ${fullErrorDetails}`);
     }
   },
 };
