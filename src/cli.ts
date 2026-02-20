@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { MoonGateMCPServer } from './server.js';
 import { logger } from './utils/logger.js';
 

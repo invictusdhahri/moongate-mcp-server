@@ -35,16 +35,27 @@ export class SessionManager {
           headers: { Authorization: `Bearer ${manualToken}` },
         });
         
+        let publicKey = response.data.publicKey;
+        let userId = response.data.userId;
+        
+        // /api2/auth may not include publicKey/userId - fetch from getwalletaddress if needed
+        if (!publicKey) {
+          const walletRes = await apiClient.get<{ publicKey: string }>('/api2/getwalletaddress', {
+            headers: { Authorization: `Bearer ${response.data.token}` },
+          });
+          publicKey = walletRes.data.publicKey;
+        }
+        
         this.session = {
           token: response.data.token,
-          publicKey: response.data.publicKey,
-          userId: response.data.userId,
+          publicKey: publicKey || '',
+          userId: userId || '',
           authProvider: 'manual',
           createdAt: Date.now(),
           expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
         };
         
-        logger.info(`Authenticated with manual token. Public key: ${this.session.publicKey}`);
+        logger.info(`Authenticated with manual token. Public key: ${this.session.publicKey || '(not found)'}`);
         return;
       } catch (error) {
         logger.error('Failed to validate manual token:', error);
