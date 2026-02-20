@@ -186,7 +186,7 @@ Swap tokens via MoonGate DEX integration (Jupiter). Token metadata is fetched au
 |----------|-------------|---------|
 | `MOONGATE_API_URL` | MoonGate API base URL | `https://wallet.moongate.one` |
 | `MOONGATE_CALLBACK_PORT` | OAuth callback port | `8787` |
-| `MOONGATE_MCP_DEBUG` | Enable debug logging | `false` |
+| `MOONGATE_MCP_DEBUG` | Debug logging (verbose) | `true` (set to `false` to disable) |
 | `MOONGATE_TOKEN` | Manual token (for testing) | - |
 
 ## Development
@@ -276,11 +276,25 @@ Make sure port 8787 is available (or set `MOONGATE_CALLBACK_PORT` to another por
 
 ### Debug logging
 
-Enable verbose logging:
+Debug logging is **enabled by default**. To disable it:
 
 ```bash
-export MOONGATE_MCP_DEBUG=true
+export MOONGATE_MCP_DEBUG=false
 ```
+
+### Testing with MCP Inspector
+
+The MCP Inspector provides a web UI to test your server:
+
+```bash
+npx @modelcontextprotocol/inspector node dist/cli.js
+```
+
+This will open a browser where you can:
+- View all available tools
+- Test tool calls with a form UI
+- See request/response logs in real-time
+- Debug without needing Claude Desktop
 
 ## Contributing
 

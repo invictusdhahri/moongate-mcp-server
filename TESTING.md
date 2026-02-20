@@ -17,32 +17,36 @@ Before implementing the full OAuth flow, test with a manual JWT token.
 ```bash
 # Export the token
 export MOONGATE_TOKEN="your-jwt-token-here"
-export MOONGATE_MCP_DEBUG=true
 
-# Start the server
+# Start the server (debug logging is ON by default)
 node dist/cli.js
+
+# To disable verbose logs:
+# export MOONGATE_MCP_DEBUG=false
 ```
 
 The server will use stdio transport - it expects JSON-RPC messages on stdin.
 
-### 3. Test with MCP Inspector
+### 3. Test with MCP Inspector (Recommended!)
 
-Install the MCP Inspector:
-
-```bash
-npx @modelcontextprotocol/inspector
-```
-
-Then run your server through it:
+The MCP Inspector provides a nice web UI to test your server:
 
 ```bash
+# With manual token
 MOONGATE_TOKEN="your-token" npx @modelcontextprotocol/inspector node dist/cli.js
+
+# Or without token (will trigger OAuth flow)
+npx @modelcontextprotocol/inspector node dist/cli.js
 ```
 
-This will open a web UI where you can:
-- View available tools
-- Test tool calls with parameters
-- See request/response logs
+This will open a browser where you can:
+- View available tools in a clean UI
+- Test tool calls with a form (no need to write JSON)
+- See request/response logs in real-time
+- Debug errors with full stack traces
+- Much easier than testing via Claude Desktop!
+
+**Note:** Debug logging is enabled by default, so you'll see detailed logs in the terminal even when using the Inspector UI.
 
 ### 4. Test Individual Tools
 
