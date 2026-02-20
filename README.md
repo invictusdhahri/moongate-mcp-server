@@ -52,18 +52,42 @@ Add to your Cursor MCP settings:
 }
 ```
 
-### First Run (OAuth Flow)
+### Authentication
 
-When you first use a MoonGate tool, the server will:
-1. Open your browser to `http://localhost:8787`
-2. Show you a login page with Google and Apple Sign-In buttons
-3. After you sign in, MoonGate verifies your credentials
-4. The session is saved locally in `~/.moongate-mcp/session.json`
-5. Your token auto-refreshes as needed (7-day expiry)
+**📖 See [AUTH-GUIDE.md](./AUTH-GUIDE.md) for detailed instructions with screenshots.**
 
-**Sessions persist between runs** - you only need to authenticate once!
+**TL;DR:** Use a token from your browser session (recommended):
 
-**Manual Token (Optional):** For testing, you can skip OAuth by setting `MOONGATE_TOKEN` in your environment.
+1. Log into [wallet.moongate.one](https://wallet.moongate.one)
+2. Open DevTools → Application → Local Storage
+3. Copy the `token` value
+4. Add it to your MCP config as `MOONGATE_TOKEN`
+
+**For Claude Desktop:**
+```json
+{
+  "mcpServers": {
+    "moongate": {
+      "command": "npx",
+      "args": ["-y", "@moongate/mcp-server"],
+      "env": {
+        "MOONGATE_TOKEN": "eyJhbGciOiJSUzI1NiIsInR5cCI6..."
+      }
+    }
+  }
+}
+```
+
+**Tokens expire after 7 days** - just grab a fresh one from your browser when needed.
+
+#### Alternative: Local OAuth Flow
+
+If you can run a local server on port 8787:
+- Omit `MOONGATE_TOKEN` from config
+- Server opens `http://localhost:8787` for Google/Apple login
+- Session auto-saves and auto-refreshes
+
+**Not recommended** for most users (requires open port, may not work in sandboxed environments).
 
 ## Available Tools
 
@@ -265,17 +289,21 @@ sequenceDiagram
 
 ## Troubleshooting
 
-### "Not authenticated" error
+### "Not authenticated" or "Invalid token" error
 
-Your session may have expired. Delete `~/.moongate-mcp/session.json` and restart:
+Your token has expired (7-day lifetime). Get a fresh one:
 
-```bash
-rm ~/.moongate-mcp/session.json
-```
+1. Go to [wallet.moongate.one](https://wallet.moongate.one) and log in
+2. Open DevTools → Application → Local Storage → `https://wallet.moongate.one`
+3. Copy the `token` value
+4. Update `MOONGATE_TOKEN` in your MCP config
+5. Restart Claude Desktop / your MCP client
 
-### OAuth callback times out
+### OAuth callback times out or "localhost:8787" won't load
 
-Make sure port 8787 is available (or set `MOONGATE_CALLBACK_PORT` to another port).
+**Solution:** Use the manual token method instead (see Authentication section above). The local OAuth server requires port 8787 to be available and may not work in sandboxed environments.
+
+If you need OAuth: set `MOONGATE_CALLBACK_PORT` to another port and ensure it's accessible.
 
 ### Debug logging
 
