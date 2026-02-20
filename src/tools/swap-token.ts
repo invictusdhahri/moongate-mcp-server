@@ -50,6 +50,22 @@ export const swapToken: ToolHandler = {
         type: 'number',
         description: 'Amount of input token to swap (human-readable, e.g. 190.82)',
       },
+      inputDecimals: {
+        type: 'number',
+        description: 'Input token decimals (optional, will be fetched if not provided)',
+      },
+      inputSymbol: {
+        type: 'string',
+        description: 'Input token symbol (optional, will be fetched if not provided)',
+      },
+      outputDecimals: {
+        type: 'number',
+        description: 'Output token decimals (optional, will be fetched if not provided)',
+      },
+      outputSymbol: {
+        type: 'string',
+        description: 'Output token symbol (optional, will be fetched if not provided)',
+      },
       slippagePercentage: {
         type: 'number',
         description: 'Slippage tolerance in basis points (e.g., 100 = 1%, 300 = 3%)',
@@ -72,32 +88,66 @@ export const swapToken: ToolHandler = {
       const token = await context.sessionManager.getToken();
       const client = createAuthenticatedClient(token);
 
-      // Step 1: Fetch token metadata for both tokens
-      logger.info('Fetching token metadata for:', inputMint, outputMint);
+      // Step 1: Get token metadata (fetch if not provided, or use provided values)
+      let inputTokenData: { decimals: string; symbol: string };
+      let outputTokenData: { decimals: string; symbol: string };
 
-      const metadataResponse = await client.get<TokenMetadata[]>('/tokens/getlist', {
-        params: {
-          mint: `${inputMint},${outputMint}`,
-        },
-      });
+      const needsFetch = !args.inputDecimals || !args.inputSymbol || !args.outputDecimals || !args.outputSymbol;
 
-      const tokens = metadataResponse.data;
-      logger.info('Token metadata response:', JSON.stringify(tokens, null, 2));
+      if (needsFetch) {
+        logger.info('Fetching token metadata for:', inputMint, outputMint);
+        
+        try {
+          const metadataResponse = await client.get<TokenMetadata[]>('/tokens/getlist', {
+            params: {
+              mint: `${inputMint},${outputMint}`,
+            },
+          });
 
-      if (!tokens || tokens.length < 2) {
-        throw new Error('Failed to fetch token metadata. Make sure both token mints are valid.');
+          const tokens = metadataResponse.data;
+          logger.info('Token metadata response:', JSON.stringify(tokens, null, 2));
+
+          const fetchedInput = tokens?.find((t) => t.Mint === inputMint);
+          const fetchedOutput = tokens?.find((t) => t.Mint === outputMint);
+
+          inputTokenData = {
+            decimals: args.inputDecimals ? String(args.inputDecimals) : (fetchedInput?.Decimals || '9'),
+            symbol: args.inputSymbol || fetchedInput?.Symbol || 'UNKNOWN',
+          };
+
+          outputTokenData = {
+            decimals: args.outputDecimals ? String(args.outputDecimals) : (fetchedOutput?.Decimals || '9'),
+            symbol: args.outputSymbol || fetchedOutput?.Symbol || 'UNKNOWN',
+          };
+        } catch (metadataError: any) {
+          logger.warn('Failed to fetch metadata, using provided values or defaults:', metadataError.message);
+          
+          // Fall back to provided values or defaults
+          inputTokenData = {
+            decimals: args.inputDecimals ? String(args.inputDecimals) : '9',
+            symbol: args.inputSymbol || 'TOKEN',
+          };
+          outputTokenData = {
+            decimals: args.outputDecimals ? String(args.outputDecimals) : '9',
+            symbol: args.outputSymbol || 'TOKEN',
+          };
+        }
+      } else {
+        // Use provided values
+        inputTokenData = {
+          decimals: String(args.inputDecimals),
+          symbol: args.inputSymbol!,
+        };
+        outputTokenData = {
+          decimals: String(args.outputDecimals),
+          symbol: args.outputSymbol!,
+        };
+        logger.info('Using provided token metadata (skipping fetch)');
       }
-
-      const inputToken = tokens.find((t) => t.Mint === inputMint);
-      const outputToken = tokens.find((t) => t.Mint === outputMint);
       
-      if (!inputToken || !outputToken) {
-        throw new Error(`Token metadata not found. Input: ${!!inputToken}, Output: ${!!outputToken}`);
-      }
-      
-      logger.debug('Token metadata fetched:', {
-        input: `${inputToken.Symbol} (${inputToken.Decimals} decimals)`,
-        output: `${outputToken.Symbol} (${outputToken.Decimals} decimals)`,
+      logger.debug('Token metadata:', {
+        input: `${inputTokenData.symbol} (${inputTokenData.decimals} decimals)`,
+        output: `${outputTokenData.symbol} (${outputTokenData.decimals} decimals)`,
       });
       
       // Step 2: Get user wallet address
@@ -109,14 +159,14 @@ export const swapToken: ToolHandler = {
       // Step 3: Execute the swap
       const swapPayload = {
         inputToken: {
-          mint: inputToken.Mint,
-          decimals: String(inputToken.Decimals),
-          symbol: inputToken.Symbol,
+          mint: inputMint,
+          decimals: inputTokenData.decimals,
+          symbol: inputTokenData.symbol,
         },
         outputToken: {
-          mint: outputToken.Mint,
-          decimals: String(outputToken.Decimals),
-          symbol: outputToken.Symbol,
+          mint: outputMint,
+          decimals: outputTokenData.decimals,
+          symbol: outputTokenData.symbol,
         },
         inputAmount: args.inputAmount,
         slippagePercentage: args.slippagePercentage ?? 100,
@@ -146,8 +196,8 @@ export const swapToken: ToolHandler = {
         return {
           success: response.data.success,
           signature: response.data.signature,
-          inputToken: response.data.inputToken ?? inputToken.Mint,
-          outputToken: response.data.outputToken ?? outputToken.Mint,
+          inputToken: response.data.inputToken ?? inputMint,
+          outputToken: response.data.outputToken ?? outputMint,
           inputAmount: response.data.inputAmount ?? args.inputAmount,
           transactionCount: response.data.transactionCount,
           status: response.data.status ?? 'success',
