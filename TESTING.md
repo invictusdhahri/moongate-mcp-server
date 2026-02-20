@@ -87,7 +87,7 @@ This will open a browser where you can:
 
 ## Phase 2: OAuth Flow Testing
 
-Once Phase 1 works, test the OAuth flow.
+OAuth is now ready with real Google Client ID!
 
 ### 1. Remove Manual Token
 
@@ -99,16 +99,25 @@ rm -rf ~/.moongate-mcp
 ### 2. Start Server
 
 ```bash
+# With MCP Inspector
+npx @modelcontextprotocol/inspector node dist/cli.js
+
+# Or standalone
 node dist/cli.js
 ```
 
 ### 3. Expected Behavior
 
-1. Server starts HTTP server on localhost:8787
-2. Opens browser to login page
-3. Click "Sign in with Google"
-4. Redirects back with token
-5. Server saves session and closes browser tab
+1. Server starts HTTP server on `localhost:8787`
+2. Opens browser to http://localhost:8787
+3. You see MoonGate login page with Google/Apple buttons
+4. Click **"Sign in with Google"**
+5. Google Sign-In popup appears
+6. After signing in, Google sends ID token to MoonGate
+7. MoonGate verifies and returns session token
+8. Browser redirects to `/callback` with token
+9. Server saves session to `~/.moongate-mcp/session.json`
+10. Browser shows "Authentication successful! You can close this window"
 
 ### 4. Verify Session
 
@@ -119,24 +128,46 @@ cat ~/.moongate-mcp/session.json
 Should show:
 ```json
 {
-  "token": "...",
-  "publicKey": "...",
-  "userId": "...",
+  "token": "eyJhbGci...",
+  "publicKey": "AqnoB...",
+  "userId": "5ede0172...",
   "authProvider": "google",
-  "createdAt": 1234567890,
-  "expiresAt": 1234567890
+  "createdAt": 1740000000000,
+  "expiresAt": 1740604800000
 }
 ```
 
-### 5. Test Token Refresh
+### 5. Test Authenticated Calls
 
-Set expiry to near future:
+Try any tool - it should work without prompting for auth again:
+
 ```bash
-# Edit session.json
-# Set expiresAt to Date.now() + 3600000 (1 hour from now)
+# In MCP Inspector, call get_wallet_address
+# Should return your public key without re-authenticating
 ```
 
-Then make a tool call - should auto-refresh.
+### 6. Test Token Refresh
+
+The server auto-refreshes tokens within 1 hour of expiry.
+
+To test refresh:
+```bash
+# Edit session.json and change expiresAt to 1 hour from now
+# Date.now() + 3600000
+```
+
+Then make a tool call - you'll see in logs:
+```
+[INFO] Token expiring soon, refreshing...
+[INFO] Token refreshed successfully
+```
+
+### 7. Test Session Persistence
+
+1. Close the MCP server
+2. Restart it
+3. Make a tool call
+4. Should work without re-authenticating (loads session from file)
 
 ## Phase 3: Claude Desktop Integration
 

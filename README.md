@@ -52,15 +52,18 @@ Add to your Cursor MCP settings:
 }
 ```
 
-### First Run
+### First Run (OAuth Flow)
 
 When you first use a MoonGate tool, the server will:
-1. Open your browser to the MoonGate login page
-2. Ask you to sign in with Google or Apple
-3. Save your session locally in `~/.moongate-mcp/session.json`
-4. Auto-refresh your token as needed (7-day expiry)
+1. Open your browser to `http://localhost:8787`
+2. Show you a login page with Google and Apple Sign-In buttons
+3. After you sign in, MoonGate verifies your credentials
+4. The session is saved locally in `~/.moongate-mcp/session.json`
+5. Your token auto-refreshes as needed (7-day expiry)
 
-Sessions persist between runs - you only need to authenticate once!
+**Sessions persist between runs** - you only need to authenticate once!
+
+**Manual Token (Optional):** For testing, you can skip OAuth by setting `MOONGATE_TOKEN` in your environment.
 
 ## Available Tools
 

@@ -345,7 +345,7 @@ export class SessionManager {
     // Initialize Google Sign-In
     window.onload = function() {
       google.accounts.id.initialize({
-        client_id: 'YOUR_GOOGLE_CLIENT_ID', // TODO: Get from MoonGate
+        client_id: '896710466843-42ss52pj2o1j9b17477nv73smnu096e2.apps.googleusercontent.com',
         callback: handleGoogleCallback
       });
 

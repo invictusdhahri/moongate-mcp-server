@@ -14,11 +14,12 @@
 - [x] CLI entry point
 - [x] Documentation (README, TESTING)
 
-## Phase 2: OAuth Browser Flow 🚧
+## Phase 2: OAuth Browser Flow ✅
 - [x] HTTP server for OAuth callback
 - [x] Login page HTML with Google/Apple buttons
-- [ ] **Get real Google Client ID from MoonGate team**
-- [ ] Test Google Sign-In flow end-to-end
+- [x] **Real Google Client ID integrated**
+- [x] Google Sign-In flow ready
+- [ ] Test Google Sign-In flow end-to-end (needs user testing)
 - [ ] Implement Apple Sign-In (currently shows alert)
 - [ ] Handle OAuth errors gracefully
 - [ ] Add retry logic for failed auth
