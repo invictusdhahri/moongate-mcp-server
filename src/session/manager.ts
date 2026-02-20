@@ -102,7 +102,11 @@ export class SessionManager {
       throw new Error('Not authenticated');
     }
 
-    await this.refreshTokenIfNeeded();
+    // Skip auto-refresh if using manual token (from MOONGATE_TOKEN env var)
+    if (this.session.authProvider !== 'manual') {
+      await this.refreshTokenIfNeeded();
+    }
+    
     return this.session.token;
   }
 
