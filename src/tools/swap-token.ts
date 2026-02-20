@@ -1,6 +1,8 @@
 import { ToolHandler } from './types.js';
 import { createAuthenticatedClient } from '../utils/api.js';
 import { logger } from '../utils/logger.js';
+import fs from 'fs';
+import os from 'os';
 
 interface TokenMetadata {
   Name: string;
@@ -9,6 +11,15 @@ interface TokenMetadata {
   Decimals: string;
   LogoURI: string;
   Tags: string[];
+}
+
+const DEBUG_LOG = '/tmp/moongate-mcp-debug.log';
+
+function debugLog(message: string, data?: any) {
+  const timestamp = new Date().toISOString();
+  const logLine = `[${timestamp}] ${message}\n${data ? JSON.stringify(data, null, 2) + '\n' : ''}\n`;
+  fs.appendFileSync(DEBUG_LOG, logLine);
+  console.error(logLine); // Also try console.error
 }
 
 /** Strip accidental surrounding quotes (e.g. from JSON double-encoding) */
@@ -114,20 +125,20 @@ export const swapToken: ToolHandler = {
         transactionSpeed: args.transactionSpeed || 'normal',
       };
       
-      console.error('\n========== SWAP REQUEST ==========');
-      console.error('URL: https://wallet.moongate.one/pump/swap');
-      console.error('Payload:', JSON.stringify(swapPayload, null, 2));
-      console.error('Token (first 50 chars):', token.substring(0, 50) + '...');
-      console.error('===================================\n');
+      debugLog('========== SWAP REQUEST ==========');
+      debugLog('URL: https://wallet.moongate.one/pump/swap');
+      debugLog('Payload:', swapPayload);
+      debugLog('Token (first 50 chars): ' + token.substring(0, 50) + '...');
+      debugLog('===================================');
       
       logger.info('Executing swap with payload:', JSON.stringify(swapPayload, null, 2));
       
       const response = await client.post('/pump/swap', swapPayload);
       
-      console.error('\n========== SWAP RESPONSE ==========');
-      console.error('Status:', response.status);
-      console.error('Data:', JSON.stringify(response.data, null, 2));
-      console.error('===================================\n');
+      debugLog('========== SWAP RESPONSE ==========');
+      debugLog('Status: ' + response.status);
+      debugLog('Data:', response.data);
+      debugLog('===================================');
       
       logger.debug('Swap response:', response.data);
       
@@ -150,17 +161,17 @@ export const swapToken: ToolHandler = {
       const errorMsg = errorData?.error || errorData?.details || error.message;
       const status = error.response?.status;
       
-      console.error('\n========== SWAP ERROR ==========');
-      console.error('HTTP Status:', status);
-      console.error('Error Code:', errorCode);
-      console.error('Error Message:', errorMsg);
-      console.error('Full Error Data:', JSON.stringify(errorData, null, 2));
-      console.error('Request was:', {
+      debugLog('========== SWAP ERROR ==========');
+      debugLog('HTTP Status: ' + status);
+      debugLog('Error Code: ' + errorCode);
+      debugLog('Error Message: ' + errorMsg);
+      debugLog('Full Error Data:', errorData);
+      debugLog('Request was:', {
         inputMint: args.inputMint,
         outputMint: args.outputMint,
         inputAmount: args.inputAmount,
       });
-      console.error('================================\n');
+      debugLog('================================');
       
       logger.error('Failed to swap token:', {
         status,
