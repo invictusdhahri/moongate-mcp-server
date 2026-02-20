@@ -159,19 +159,24 @@ Get wallet portfolio (tokens, balances, NFTs).
 
 ### `swap_token`
 
-Swap tokens via MoonGate DEX integration.
+Swap tokens via MoonGate DEX integration (Jupiter). Token metadata is fetched automatically.
 
 **Parameters:**
 - `inputMint` (string): Input token mint address
 - `outputMint` (string): Output token mint address
-- `amount` (number): Amount of input token to swap
-- `slippage` (number): Slippage tolerance in bps (default: 100 = 1%)
+- `inputAmount` (number): Amount of input token to swap
+- `slippagePercentage` (number): Slippage tolerance as percentage (default: 1 = 1%)
+- `transactionSpeed` (string): Transaction priority - "slow", "normal", or "fast" (default: "normal")
 
 **Returns:**
 ```json
 {
+  "success": true,
   "signature": "4xK2...",
-  "outputAmount": 123.45
+  "transactionCount": 1,
+  "inputToken": "USDC",
+  "outputToken": "SOL",
+  "inputAmount": 100
 }
 ```
 

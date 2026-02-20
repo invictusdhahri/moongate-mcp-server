@@ -2,77 +2,145 @@ import { ToolHandler } from './types.js';
 import { createAuthenticatedClient } from '../utils/api.js';
 import { logger } from '../utils/logger.js';
 
+interface TokenMetadata {
+  Name: string;
+  Symbol: string;
+  Mint: string;
+  Decimals: string;
+  LogoURI: string;
+  Tags: string[];
+}
+
 export const swapToken: ToolHandler = {
   name: 'swap_token',
-  description: 'Swap tokens using MoonGate DEX integration (Pump.fun)',
+  description: 'Swap tokens using MoonGate DEX integration (Jupiter). Fetches token metadata automatically.',
   inputSchema: {
     type: 'object',
     properties: {
-      inputToken: {
-        type: 'object',
-        description: 'Input token details',
-        properties: {
-          mint: { type: 'string', description: 'Solana mint address' },
-          decimals: { type: 'number', description: 'Token decimals' },
-          symbol: { type: 'string', description: 'Token symbol' },
-        },
-        required: ['mint', 'decimals', 'symbol'],
+      inputMint: {
+        type: 'string',
+        description: 'Input token mint address',
       },
-      outputToken: {
-        type: 'object',
-        description: 'Output token details',
-        properties: {
-          mint: { type: 'string', description: 'Solana mint address' },
-          decimals: { type: 'number', description: 'Token decimals' },
-          symbol: { type: 'string', description: 'Token symbol' },
-        },
-        required: ['mint', 'decimals', 'symbol'],
+      outputMint: {
+        type: 'string',
+        description: 'Output token mint address',
       },
       inputAmount: {
         type: 'number',
-        description: "Amount of input token to swap (in token's smallest unit)",
+        description: 'Amount of input token to swap',
       },
       slippagePercentage: {
         type: 'number',
-        description: 'Slippage tolerance as percentage (e.g., 1 = 1%)',
+        description: 'Slippage tolerance as percentage (e.g., 1 = 1%, 0.5 = 0.5%)',
         default: 1,
       },
-      password: {
+      transactionSpeed: {
         type: 'string',
-        description: 'Wallet password (empty string for OAuth users)',
-        default: '',
+        enum: ['slow', 'normal', 'fast'],
+        description: 'Transaction speed/priority',
+        default: 'normal',
       },
     },
-    required: ['inputToken', 'outputToken', 'inputAmount'],
+    required: ['inputMint', 'outputMint', 'inputAmount'],
   },
   handler: async (args, context) => {
     try {
       const token = await context.sessionManager.getToken();
-      const session = context.sessionManager.getSession();
       const client = createAuthenticatedClient(token);
-
-      const payload = {
-        inputToken: args.inputToken,
-        outputToken: args.outputToken,
+      
+      // Step 1: Fetch token metadata for both tokens
+      logger.debug('Fetching token metadata for:', args.inputMint, args.outputMint);
+      
+      const metadataResponse = await client.get<TokenMetadata[]>('/tokens/getlist', {
+        params: {
+          mint: `${args.inputMint},${args.outputMint}`,
+        },
+      });
+      
+      const tokens = metadataResponse.data;
+      
+      if (!tokens || tokens.length < 2) {
+        throw new Error('Failed to fetch token metadata. Make sure both token mints are valid.');
+      }
+      
+      const inputToken = tokens.find((t) => t.Mint === args.inputMint);
+      const outputToken = tokens.find((t) => t.Mint === args.outputMint);
+      
+      if (!inputToken || !outputToken) {
+        throw new Error(`Token metadata not found. Input: ${!!inputToken}, Output: ${!!outputToken}`);
+      }
+      
+      logger.debug('Token metadata fetched:', {
+        input: `${inputToken.Symbol} (${inputToken.Decimals} decimals)`,
+        output: `${outputToken.Symbol} (${outputToken.Decimals} decimals)`,
+      });
+      
+      // Step 2: Get user wallet address
+      const walletResponse = await client.get('/api2/getwalletaddress');
+      const userWallet = walletResponse.data.publicKey;
+      
+      logger.debug('User wallet:', userWallet);
+      
+      // Step 3: Execute the swap
+      const swapPayload = {
+        inputToken: {
+          mint: inputToken.Mint,
+          decimals: parseInt(inputToken.Decimals, 10),
+          symbol: inputToken.Symbol,
+        },
+        outputToken: {
+          mint: outputToken.Mint,
+          decimals: parseInt(outputToken.Decimals, 10),
+          symbol: outputToken.Symbol,
+        },
         inputAmount: args.inputAmount,
-        slippagePercentage: args.slippagePercentage ?? 1,
-        userWallet: session.publicKey,
-        password: args.password ?? '',
+        slippagePercentage: args.slippagePercentage || 1,
+        userWallet,
+        password: '', // Empty password per MoonGate OAuth design
+        transactionSpeed: args.transactionSpeed || 'normal',
       };
-
-      const response = await client.post('/pump/swap', payload);
+      
+      logger.debug('Executing swap with payload:', swapPayload);
+      
+      const response = await client.post('/pump/swap', swapPayload);
       
       logger.debug('Swap response:', response.data);
       
-      return response.data;
+      if (response.data.success && response.data.signature) {
+        return {
+          success: true,
+          signature: response.data.signature,
+          transactionCount: response.data.transactionCount,
+          inputToken: inputToken.Symbol,
+          outputToken: outputToken.Symbol,
+          inputAmount: args.inputAmount,
+        };
+      } else {
+        throw new Error(response.data.error || 'Swap failed without error message');
+      }
     } catch (error: any) {
-      const status = error.response?.status;
-      const data = error.response?.data;
-      const msg = typeof data === 'object'
-        ? (data?.error || data?.message || JSON.stringify(data))
-        : (data || error.message);
-      logger.error('Failed to swap token:', { status, data });
-      throw new Error(`Failed to swap token: ${msg}`);
+      const errorData = error.response?.data;
+      const errorCode = errorData?.errorCode;
+      const errorMsg = errorData?.error || errorData?.details || error.message;
+      
+      logger.error('Failed to swap token:', {
+        code: errorCode,
+        message: errorMsg,
+        fullError: errorData,
+      });
+      
+      // Provide helpful error messages
+      if (errorCode === 'NO_ROUTE_FOUND') {
+        throw new Error('No swap route found. The tokens might not have enough liquidity.');
+      } else if (errorCode === 'INSUFFICIENT_BALANCE') {
+        throw new Error('Insufficient token balance for this swap.');
+      } else if (errorCode === 'INSUFFICIENT_SOL_BALANCE') {
+        throw new Error('Insufficient SOL balance for transaction fees.');
+      } else if (errorCode === 'AUTH_REQUIRED') {
+        throw new Error('Authentication required. Session may have expired.');
+      } else {
+        throw new Error(`Swap failed: ${errorMsg}`);
+      }
     }
   },
 };
