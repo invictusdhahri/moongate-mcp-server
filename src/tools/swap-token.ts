@@ -86,12 +86,12 @@ export const swapToken: ToolHandler = {
       const swapPayload = {
         inputToken: {
           mint: inputToken.Mint,
-          decimals: parseInt(inputToken.Decimals, 10),
+          decimals: inputToken.Decimals, // Keep as string (API expects string, not number)
           symbol: inputToken.Symbol,
         },
         outputToken: {
           mint: outputToken.Mint,
-          decimals: parseInt(outputToken.Decimals, 10),
+          decimals: outputToken.Decimals, // Keep as string (API expects string, not number)
           symbol: outputToken.Symbol,
         },
         inputAmount: args.inputAmount,
