@@ -1,8 +1,11 @@
 # MoonGate MCP Server
 
+[![npm version](https://img.shields.io/npm/v/moongate-mcp-server.svg)](https://www.npmjs.com/package/moongate-mcp-server)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Model Context Protocol (MCP) server for [MoonGate](https://moongate.one) - the Solana wallet with zero-friction authentication.
 
-This server enables AI assistants like Claude Desktop and Cursor to interact with your MoonGate wallet:
+This server enables AI assistants and tools like Claude (via API or Desktop), OpenClaw, and Cursor to interact with your MoonGate wallet:
 - 🔑 Sign transactions and messages
 - 💸 Send tokens (SOL and SPL tokens)
 - 📊 View portfolio and balances
@@ -14,7 +17,7 @@ This server enables AI assistants like Claude Desktop and Cursor to interact wit
 ### Installation
 
 ```bash
-npm install -g @moongate/mcp-server
+npm install -g moongate-mcp-server
 ```
 
 ### Configuration
@@ -28,7 +31,7 @@ Add to your `~/Library/Application Support/Claude/claude_desktop_config.json` (m
   "mcpServers": {
     "moongate": {
       "command": "npx",
-      "args": ["-y", "@moongate/mcp-server"],
+      "args": ["-y", "moongate-mcp-server"],
       "env": {
         "MOONGATE_API_URL": "https://wallet.moongate.one"
       }
@@ -46,11 +49,15 @@ Add to your Cursor MCP settings:
   "mcpServers": {
     "moongate": {
       "command": "npx",
-      "args": ["-y", "@moongate/mcp-server"]
+      "args": ["-y", "moongate-mcp-server"]
     }
   }
 }
 ```
+
+#### For OpenClaw or Custom Integrations
+
+Use the MCP SDK to connect to the server programmatically. See the [MCP documentation](https://modelcontextprotocol.io) for details on client implementation.
 
 ### Authentication
 
@@ -69,7 +76,7 @@ Add to your Cursor MCP settings:
   "mcpServers": {
     "moongate": {
       "command": "npx",
-      "args": ["-y", "@moongate/mcp-server"],
+      "args": ["-y", "moongate-mcp-server"],
       "env": {
         "MOONGATE_TOKEN": "eyJhbGciOiJSUzI1NiIsInR5cCI6..."
       }
@@ -80,14 +87,6 @@ Add to your Cursor MCP settings:
 
 **Tokens expire after 7 days** - just grab a fresh one from your browser when needed.
 
-#### Alternative: Local OAuth Flow
-
-If you can run a local server on port 8787:
-- Omit `MOONGATE_TOKEN` from config
-- Server opens `http://localhost:8787` for Google/Apple login
-- Session auto-saves and auto-refreshes
-
-**Not recommended** for most users (requires open port, may not work in sandboxed environments).
 
 ## Available Tools
 
@@ -147,14 +146,18 @@ Sign a Solana transaction (optionally broadcast it).
 
 ### `send_token`
 
-Send SOL or SPL tokens to another address.
+Send SOL or SPL tokens to another address. Fetches your portfolio to resolve the token, verify balance, and use correct decimals.
 
 **Parameters:**
-- `tokenMint` (string): Token mint address (use native SOL mint for SOL)
+- `tokenMint` (string): Token mint address (optional if tokenName/tokenSymbol provided)
+- `tokenName` (string): Token name to search in portfolio (e.g. "Wrapped SOL")
+- `tokenSymbol` (string): Token symbol to search in portfolio (e.g. "SOL", "USDC")
 - `toAddress` (string): Recipient wallet address
 - `amount` (number): Amount to send
-- `decimals` (number): Token decimals (default: 9 for SOL)
+- `decimals` (number): Token decimals (optional; auto-fetched from portfolio)
 - `userWallet` (string): Optional - sender address (auto-detected if omitted)
+
+**Note:** Provide at least one of `tokenMint`, `tokenName`, or `tokenSymbol`. The token must exist in your portfolio.
 
 **Returns:**
 ```json
@@ -184,16 +187,51 @@ Get wallet portfolio (tokens, balances, NFTs).
 
 ---
 
-### `swap_token`
+### `search_token`
 
-Swap tokens via MoonGate DEX integration (Jupiter). Token metadata is fetched automatically.
+Search for Solana tokens by name, symbol, or mint address. Returns top results sorted by market cap.
 
 **Parameters:**
-- `inputMint` (string): Input token mint address
-- `outputMint` (string): Output token mint address
+- `query` (string): Token name (e.g. "Solana"), symbol (e.g. "SOL"), or mint address
+- `limit` (number): Maximum results to return (default: 10, max: 100)
+
+**Returns:**
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "mint": "So11111111111111111111111111111111111111112",
+      "name": "Wrapped SOL",
+      "symbol": "SOL",
+      "decimals": 9,
+      "price": "$86.46",
+      "marketCap": "52474839784",
+      "volume24h": "139815210",
+      "holders": 2877594,
+      "image": "https://..."
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+### `swap_token`
+
+Swap tokens via MoonGate DEX integration (Jupiter). Supports searching by name/symbol or mint address.
+
+**Parameters:**
+- `inputMint` (string): Input token mint address (optional if inputToken provided)
+- `inputToken` (string): Input token name/symbol (e.g. "SOL", "USDC") - searches for mint
+- `outputMint` (string): Output token mint address (optional if outputToken provided)
+- `outputToken` (string): Output token name/symbol (e.g. "SOL", "USDC") - searches for mint
 - `inputAmount` (number): Amount of input token to swap
-- `slippagePercentage` (number): Slippage tolerance as percentage (default: 1 = 1%)
-- `transactionSpeed` (string): Transaction priority - "slow", "normal", or "fast" (default: "normal")
+- `slippagePercentage` (number): Slippage tolerance in basis points (default: 100 = 1%)
+- `transactionSpeed` (string): Priority - "slow", "normal", or "fast" (default: "normal")
+
+**Note:** Provide either mint address OR name/symbol for each token. Name/symbol search returns the top result by market cap.
 
 **Returns:**
 ```json
@@ -206,6 +244,82 @@ Swap tokens via MoonGate DEX integration (Jupiter). Token metadata is fetched au
   "inputAmount": 100
 }
 ```
+
+---
+
+### `get_token_info`
+
+Get detailed token information including security analysis and rugpull risk indicators.
+
+**Parameters:**
+- `tokenMint` (string): Token mint address (optional if tokenName provided)
+- `tokenName` (string): Token name or symbol to search for
+
+**Returns:**
+```json
+{
+  "token": {
+    "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+    "name": "Bonk",
+    "symbol": "BONK",
+    "decimals": 5,
+    "supply": 87995151415980.58,
+    "createdAt": 1670531612
+  },
+  "price": {
+    "usd": 0.00000646,
+    "marketCap": 568745265,
+    "circulatingMarketCap": 531283669
+  },
+  "security": {
+    "mintable": false,
+    "freezable": false,
+    "lockedLiquidityPercent": 75,
+    "topHoldersPercent": 33.56,
+    "devHoldersPercent": 0.000000166,
+    "snipersPercent": 0
+  },
+  "market": {
+    "liquidity": 178311,
+    "holders": 987817,
+    "buyCount24h": 5165,
+    "sellCount24h": 5630,
+    "buyerSentimentPercent": 47.85
+  },
+  "socialLinks": {
+    "website": "https://www.bonkcoin.com",
+    "twitter": "https://twitter.com/bonk_inu",
+    "telegram": "https://t.me/Official_Bonk_Inu"
+  },
+  "riskAssessment": {
+    "overallRisk": "LOW",
+    "riskIndicators": ["No major red flags detected"],
+    "safetyIndicators": [
+      "Good liquidity ($178.3K)",
+      "987,817 holders",
+      "Good distribution (top holders: 33.6%)",
+      "✓ Not mintable or freezable",
+      "75% liquidity locked",
+      "Has social media presence"
+    ],
+    "recommendation": "✓ Appears relatively safe, but always DYOR (Do Your Own Research)"
+  }
+}
+```
+
+**Risk Indicators:**
+- **Liquidity:** Low liquidity (<$10K) flags high rugpull risk
+- **Holder Distribution:** Top holders >50% indicates concentration risk
+- **Security:** Mintable/freezable tokens can be manipulated
+- **Locked Liquidity:** <50% locked is risky
+- **Age:** Very new tokens (<7 days) are higher risk
+- **Social Presence:** No social links is suspicious
+- **Sentiment:** Low buyer percentage (<30%) indicates bearish market
+
+**Risk Levels:**
+- `LOW`: 0-1 risk indicators
+- `MODERATE`: 2-4 risk indicators  
+- `HIGH`: 5+ risk indicators
 
 ## Environment Variables
 
@@ -282,10 +396,11 @@ sequenceDiagram
 - [x] Phase 1: Core tools (get address, sign message/tx)
 - [x] Phase 2: OAuth browser flow, send tokens
 - [x] Phase 3: Portfolio & swap tools
-- [ ] Phase 4: npm publish as `@moongate/mcp-server`
-- [ ] Phase 5: Apple Sign-In support (currently Google only)
-- [ ] Phase 6: NFT-specific operations
-- [ ] Phase 7: DeFi integrations (stake, lend, etc.)
+- [x] Phase 4: Token search and rugpull analysis
+- [x] Phase 5: npm publish as `moongate-mcp-server`
+- [ ] Phase 6: NFT operations (list, transfer, mint)
+- [ ] Phase 7: Token metadata updates
+- [ ] Phase 8: Multi-wallet support
 
 ## Troubleshooting
 

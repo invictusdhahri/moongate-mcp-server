@@ -1,6 +1,7 @@
 import { ToolHandler } from './types.js';
 import { createAuthenticatedClient } from '../utils/api.js';
 import { logger } from '../utils/logger.js';
+import { AxiosInstance } from 'axios';
 import fs from 'fs';
 import os from 'os';
 
@@ -11,6 +12,59 @@ interface TokenMetadata {
   Decimals: string;
   LogoURI: string;
   Tags: string[];
+}
+
+interface SearchTokenResult {
+  address: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  priceUSD?: string;
+  marketCap?: string;
+}
+
+/** Search for a token by name/symbol and return mint address + decimals */
+async function searchTokenByName(
+  client: AxiosInstance,
+  query: string
+): Promise<{ mint: string; decimals: number; symbol: string; name: string } | null> {
+  try {
+    logger.info(`Searching for token: "${query}"`);
+    
+    const response = await client.get<{ success: boolean; data: { tokens: SearchTokenResult[] } }>(
+      '/api/tokens/search',
+      {
+        params: {
+          q: query,
+          limit: 5,
+          offset: 0,
+          excludeScam: true,
+          sortBy: 'circulatingMarketCap',
+          sortDirection: 'desc',
+          predefinedFilters: JSON.stringify(['BASE', 'SEARCH_QUALITY']),
+        },
+      }
+    );
+
+    const tokens = response.data?.data?.tokens || [];
+    
+    if (tokens.length === 0) {
+      return null;
+    }
+
+    const topResult = tokens[0];
+    logger.info(`Found token: ${topResult.symbol} (${topResult.name}) - ${topResult.address}`);
+
+    return {
+      mint: topResult.address,
+      decimals: topResult.decimals,
+      symbol: topResult.symbol,
+      name: topResult.name,
+    };
+  } catch (error: any) {
+    logger.warn(`Token search failed for "${query}":`, error.message);
+    return null;
+  }
 }
 
 const DEBUG_LOG = '/tmp/moongate-mcp-debug.log';
@@ -34,17 +88,25 @@ function stripQuotes(s: string): string {
 
 export const swapToken: ToolHandler = {
   name: 'swap_token',
-  description: 'Swap tokens using MoonGate DEX integration (Jupiter). Fetches token metadata automatically.',
+  description: 'Swap tokens using MoonGate DEX integration (Jupiter). Supports searching by token name/symbol or mint address.',
   inputSchema: {
     type: 'object',
     properties: {
       inputMint: {
         type: 'string',
-        description: 'Input token mint address',
+        description: 'Input token mint address (optional if inputToken is provided)',
+      },
+      inputToken: {
+        type: 'string',
+        description: 'Input token name or symbol (e.g. "SOL", "USDC") - will search for mint address',
       },
       outputMint: {
         type: 'string',
-        description: 'Output token mint address',
+        description: 'Output token mint address (optional if outputToken is provided)',
+      },
+      outputToken: {
+        type: 'string',
+        description: 'Output token name or symbol (e.g. "SOL", "USDC") - will search for mint address',
       },
       inputAmount: {
         type: 'number',
@@ -78,85 +140,101 @@ export const swapToken: ToolHandler = {
         default: 'normal',
       },
     },
-    required: ['inputMint', 'outputMint', 'inputAmount'],
+    required: ['inputAmount'],
   },
   handler: async (args, context) => {
-    const inputMint = stripQuotes(String(args.inputMint ?? ''));
-    const outputMint = stripQuotes(String(args.outputMint ?? ''));
-
     try {
       const token = await context.sessionManager.getToken();
       const client = createAuthenticatedClient(token);
 
-      // Step 1: Get token metadata (fetch if not provided, or use provided values)
+      // Resolve input token (mint or name/symbol)
+      let inputMint: string;
       let inputTokenData: { decimals: string; symbol: string };
+
+      if (args.inputMint) {
+        inputMint = stripQuotes(String(args.inputMint));
+        inputTokenData = {
+          decimals: args.inputDecimals ? String(args.inputDecimals) : '9',
+          symbol: args.inputSymbol || 'TOKEN',
+        };
+      } else if (args.inputToken) {
+        const searchResult = await searchTokenByName(client, String(args.inputToken));
+        if (!searchResult) {
+          throw new Error(`Input token "${args.inputToken}" not found. Try providing the mint address instead.`);
+        }
+        inputMint = searchResult.mint;
+        inputTokenData = {
+          decimals: String(searchResult.decimals),
+          symbol: searchResult.symbol,
+        };
+        logger.info(`Resolved input token "${args.inputToken}" to ${searchResult.symbol} (${inputMint})`);
+      } else {
+        throw new Error('Provide either inputMint or inputToken (name/symbol)');
+      }
+
+      // Resolve output token (mint or name/symbol)
+      let outputMint: string;
       let outputTokenData: { decimals: string; symbol: string };
 
-      const needsFetch = !args.inputDecimals || !args.inputSymbol || !args.outputDecimals || !args.outputSymbol;
+      if (args.outputMint) {
+        outputMint = stripQuotes(String(args.outputMint));
+        outputTokenData = {
+          decimals: args.outputDecimals ? String(args.outputDecimals) : '9',
+          symbol: args.outputSymbol || 'TOKEN',
+        };
+      } else if (args.outputToken) {
+        const searchResult = await searchTokenByName(client, String(args.outputToken));
+        if (!searchResult) {
+          throw new Error(`Output token "${args.outputToken}" not found. Try providing the mint address instead.`);
+        }
+        outputMint = searchResult.mint;
+        outputTokenData = {
+          decimals: String(searchResult.decimals),
+          symbol: searchResult.symbol,
+        };
+        logger.info(`Resolved output token "${args.outputToken}" to ${searchResult.symbol} (${outputMint})`);
+      } else {
+        throw new Error('Provide either outputMint or outputToken (name/symbol)');
+      }
 
-      if (needsFetch) {
-        logger.info('Fetching token metadata for:', inputMint, outputMint);
-        
+      // Fetch additional metadata if needed (fallback for missing decimals/symbols)
+      const needsMetadataFetch = 
+        (inputTokenData.symbol === 'TOKEN' && !args.inputSymbol) ||
+        (outputTokenData.symbol === 'TOKEN' && !args.outputSymbol);
+
+      if (needsMetadataFetch) {
         try {
           const metadataResponse = await client.get<TokenMetadata[]>('/tokens/getlist', {
-            params: {
-              mint: `${inputMint},${outputMint}`,
-            },
+            params: { mint: `${inputMint},${outputMint}` },
           });
 
           const tokens = metadataResponse.data;
-          logger.info('Token metadata response:', JSON.stringify(tokens, null, 2));
-
           const fetchedInput = tokens?.find((t) => t.Mint === inputMint);
           const fetchedOutput = tokens?.find((t) => t.Mint === outputMint);
 
-          inputTokenData = {
-            decimals: args.inputDecimals ? String(args.inputDecimals) : (fetchedInput?.Decimals || '9'),
-            symbol: args.inputSymbol || fetchedInput?.Symbol || 'UNKNOWN',
-          };
-
-          outputTokenData = {
-            decimals: args.outputDecimals ? String(args.outputDecimals) : (fetchedOutput?.Decimals || '9'),
-            symbol: args.outputSymbol || fetchedOutput?.Symbol || 'UNKNOWN',
-          };
-        } catch (metadataError: any) {
-          logger.warn('Failed to fetch metadata, using provided values or defaults:', metadataError.message);
-          
-          // Fall back to provided values or defaults
-          inputTokenData = {
-            decimals: args.inputDecimals ? String(args.inputDecimals) : '9',
-            symbol: args.inputSymbol || 'TOKEN',
-          };
-          outputTokenData = {
-            decimals: args.outputDecimals ? String(args.outputDecimals) : '9',
-            symbol: args.outputSymbol || 'TOKEN',
-          };
+          if (fetchedInput && inputTokenData.symbol === 'TOKEN') {
+            inputTokenData.symbol = fetchedInput.Symbol;
+            inputTokenData.decimals = fetchedInput.Decimals;
+          }
+          if (fetchedOutput && outputTokenData.symbol === 'TOKEN') {
+            outputTokenData.symbol = fetchedOutput.Symbol;
+            outputTokenData.decimals = fetchedOutput.Decimals;
+          }
+        } catch (_) {
+          logger.warn('Metadata fetch failed, using resolved values');
         }
-      } else {
-        // Use provided values
-        inputTokenData = {
-          decimals: String(args.inputDecimals),
-          symbol: args.inputSymbol!,
-        };
-        outputTokenData = {
-          decimals: String(args.outputDecimals),
-          symbol: args.outputSymbol!,
-        };
-        logger.info('Using provided token metadata (skipping fetch)');
       }
-      
-      logger.debug('Token metadata:', {
-        input: `${inputTokenData.symbol} (${inputTokenData.decimals} decimals)`,
-        output: `${outputTokenData.symbol} (${outputTokenData.decimals} decimals)`,
+
+      logger.debug('Final token data:', {
+        input: `${inputTokenData.symbol} (${inputTokenData.decimals} decimals) - ${inputMint}`,
+        output: `${outputTokenData.symbol} (${outputTokenData.decimals} decimals) - ${outputMint}`,
       });
-      
-      // Step 2: Get user wallet address
+
+      // Get user wallet address
       const walletResponse = await client.get('/api2/getwalletaddress');
       const userWallet = walletResponse.data.publicKey;
-      
-      logger.debug('User wallet:', userWallet);
-      
-      // Step 3: Execute the swap
+
+      // Execute the swap
       const swapPayload = {
         inputToken: {
           mint: inputMint,

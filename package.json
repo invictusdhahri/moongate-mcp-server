@@ -1,8 +1,8 @@
 {
-  "name": "@moongate/mcp-server",
+  "name": "moongate-mcp-server",
   "version": "0.1.0",
   "description": "Model Context Protocol server for MoonGate Solana wallet",
-  "main": "dist/index.js",
+  "main": "dist/server.js",
   "bin": {
     "moongate-mcp": "dist/cli.js"
   },
@@ -13,15 +13,25 @@
     "dev:server": "tsup && concurrently \"tsup --watch\" \"MOONGATE_MCP_DEBUG=true nodemon --watch dist --ext js dist/cli.js\"",
     "prepare": "npm run build"
   },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
   "keywords": [
     "mcp",
     "moongate",
     "solana",
     "wallet",
-    "model-context-protocol"
+    "model-context-protocol",
+    "openclaw",
+    "claude"
   ],
   "author": "MoonGate",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@solana/web3.js": "^1.95.5",

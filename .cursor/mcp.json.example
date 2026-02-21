@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "moongate": {
+      "command": "node",
+      "args": ["./dist/cli.js"],
+      "env": {
+        "MOONGATE_TOKEN": "your-token-here",
+        "MOONGATE_MCP_DEBUG": "false"
+      }
+    }
+  }
+}

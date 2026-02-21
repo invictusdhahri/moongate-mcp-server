@@ -1,0 +1,49 @@
+# Source files
+src/
+*.ts
+!*.d.ts
+
+# Build configs
+tsconfig.json
+tsup.config.ts
+
+# Development files
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+.github/
+
+# Dependencies
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Session data
+.moongate-mcp/
+
+# Lock files
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+.pnpm-store/
